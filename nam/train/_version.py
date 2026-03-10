@@ -19,8 +19,11 @@ class Version:
     def from_string(cls, s: str):
         parts = s.split(".")
         try:
-            major, minor, patch = [int(x) for x in parts[:3]]
-        except ValueError as e:
+            major = int(parts[0])
+            minor = int(parts[1])
+            patch_str = parts[2].split("dev")[0]
+            patch = int(patch_str) if patch_str else 0
+        except (ValueError, IndexError) as e:
             raise ValueError(f"Failed to parse version from string '{s}':\n{e}")
         return cls(major=major, minor=minor, patch=patch)
 

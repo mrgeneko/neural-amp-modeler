@@ -128,7 +128,7 @@ def _get_latest_version_from_github() -> _Optional[_Version]:
 @_dataclass
 class AdvancedOptions(object):
     """
-    :param architecture: Which architecture to use.
+    :param architectures: Which architectures to use (set of architectures).
     :param num_epochs: How many epochs to train for.
     :param latency: Latency between the input and output audio, in samples.
         None means we don't know and it has to be calibrated.
@@ -137,7 +137,7 @@ class AdvancedOptions(object):
         stop.
     """
 
-    architecture: _core.Architecture
+    architectures: _Sequence[_core.Architecture]
     num_epochs: int
     latency: _Optional[int]
     ignore_checks: bool
@@ -222,9 +222,9 @@ class _PathButton(object):
             val = self.val
             val = val[0] if isinstance(val, tuple) and len(val) == 1 else val
             self._widgets["label"]["fg"] = self._color_when_set
-            self._widgets["label"][
-                "text"
-            ] = f"{self._button_text.capitalize()} set to {val}"
+            self._widgets["label"]["text"] = (
+                f"{self._button_text.capitalize()} set to {val}"
+            )
 
     def _set_val(self):
         last_path = _settings.get_last_path(self._path_key)
@@ -538,9 +538,9 @@ class GUI(object):
         self._frame_advanced_options.pack(side=_tk.BOTTOM, anchor="e")
 
         # Advanced options for training
-        default_architecture = _core.Architecture.STANDARD
+        default_architectures = [_core.Architecture.STANDARD]
         self.advanced_options = AdvancedOptions(
-            default_architecture,
+            default_architectures,
             _DEFAULT_NUM_EPOCHS,
             _DEFAULT_DELAY,
             _DEFAULT_IGNORE_CHECKS,
@@ -567,6 +567,19 @@ class GUI(object):
             command=self._train,
         )
         self._widgets[_GUIWidgets.TRAIN].pack()
+
+        # Queue button
+        self._queue_button = _tk.Button(
+            self._frame_train,
+            text="Add to Queue",
+            width=_BUTTON_WIDTH,
+            height=_BUTTON_HEIGHT,
+            command=self._open_queue,
+        )
+        self._queue_button.pack()
+
+        # Initialize queue
+        self._queue_window: _Optional[object] = None
 
         self._show_update_modal_if_update_available()
 
@@ -664,6 +677,20 @@ class GUI(object):
 
         self._wait_while_func(lambda resume: UserMetadataGUI(resume, self))
 
+    def _open_queue(self):
+        """
+        Open the training queue window
+        """
+        from nam.train.gui._resources.queue import TrainingQueue, TrainingJob
+        from nam.train.gui._resources.queue_window import QueueWindow
+
+        if self._queue_window is None or not self._queue_window.winfo_exists():
+            self._queue = TrainingQueue()
+            self._queue_window = QueueWindow(self._root, self._queue)
+        else:
+            self._queue_window._root.lift()
+            self._queue_window._refresh_queue()
+
     def _show_update_modal_if_update_available(self):
         class UpdateInfo(_NamedTuple):
             available: bool
@@ -730,53 +757,56 @@ class GUI(object):
 
         # Advanced options:
         num_epochs = self.advanced_options.num_epochs
-        architecture = self.advanced_options.architecture
+        architectures = self.advanced_options.architectures
         user_latency = self.advanced_options.latency
         file_list = self._widgets[_GUIWidgets.OUTPUT_PATH].val
         threshold_esr = self.advanced_options.threshold_esr
 
-        # Run it
-        for file in file_list:
-            print(f"Now training {file}")
-            basename = _re.sub(r"\.wav$", "", file.split("/")[-1])
-            user_metadata = (
-                self.user_metadata if self.user_metadata_flag else _UserMetadata()
-            )
+        # Run it - iterate through architectures and files
+        for architecture in architectures:
+            for file in file_list:
+                print(f"Now training {file} with architecture {architecture.value}")
+                basename = _re.sub(r"\.wav$", "", file.split("/")[-1])
+                user_metadata = (
+                    self.user_metadata if self.user_metadata_flag else _UserMetadata()
+                )
 
-            train_output = _core.train(
-                input_path,
-                file,
-                self._widgets[_GUIWidgets.TRAINING_DESTINATION].val,
-                epochs=num_epochs,
-                latency=user_latency,
-                architecture=architecture,
-                silent=self._checkboxes[_CheckboxKeys.SILENT_TRAINING].variable.get(),
-                save_plot=self._checkboxes[_CheckboxKeys.SAVE_PLOT].variable.get(),
-                modelname=basename,
-                ignore_checks=ignore_checks,
-                local=True,
-                fit_mrstft=self.get_mrstft_fit(),
-                threshold_esr=threshold_esr,
-                user_metadata=user_metadata,
-                **self.core_train_kwargs(),
-            )
+                train_output = _core.train(
+                    input_path,
+                    file,
+                    self._widgets[_GUIWidgets.TRAINING_DESTINATION].val,
+                    epochs=num_epochs,
+                    latency=user_latency,
+                    architecture=architecture,
+                    silent=self._checkboxes[
+                        _CheckboxKeys.SILENT_TRAINING
+                    ].variable.get(),
+                    save_plot=self._checkboxes[_CheckboxKeys.SAVE_PLOT].variable.get(),
+                    modelname=f"{basename}_{architecture.value}",
+                    ignore_checks=ignore_checks,
+                    local=True,
+                    fit_mrstft=self.get_mrstft_fit(),
+                    threshold_esr=threshold_esr,
+                    user_metadata=user_metadata,
+                    **self.core_train_kwargs(),
+                )
 
-            if train_output.model is None:
-                print("Model training failed! Skip exporting...")
-                continue
-            print("Model training complete!")
-            print("Exporting...")
-            outdir = self._widgets[_GUIWidgets.TRAINING_DESTINATION].val
-            print(f"Exporting trained model to {outdir}...")
-            train_output.model.net.export(
-                outdir,
-                basename=basename,
-                user_metadata=user_metadata,
-                other_metadata={
-                    _metadata.TRAINING_KEY: train_output.metadata.model_dump()
-                },
-            )
-            print("Done!")
+                if train_output.model is None:
+                    print("Model training failed! Skip exporting...")
+                    continue
+                print("Model training complete!")
+                print("Exporting...")
+                outdir = self._widgets[_GUIWidgets.TRAINING_DESTINATION].val
+                print(f"Exporting trained model to {outdir}...")
+                train_output.model.net.export(
+                    outdir,
+                    basename=f"{basename}_{architecture.value}",
+                    user_metadata=user_metadata,
+                    other_metadata={
+                        _metadata.TRAINING_KEY: train_output.metadata.model_dump()
+                    },
+                )
+                print("Done!")
 
         # Metadata was only valid for 1 run (possibly a batch), so make sure it's not
         # used again unless the user re-visits the window and clicks "ok".
@@ -1146,23 +1176,47 @@ class AdvancedOptionsGUI(object):
             except ValueError:
                 pass
 
+        # Set architectures from checkboxes
+        selected = self.get_architectures()
+        if selected:
+            self._parent.advanced_options.architectures = selected
+        else:
+            # At least one must be selected, default to STANDARD
+            self._parent.advanced_options.architectures = [_core.Architecture.STANDARD]
+
         # TODO could clean up more / see `.pack_options()`
-        for name in ("architecture", "num_epochs", "latency", "threshold_esr"):
+        for name in ("num_epochs", "latency", "threshold_esr"):
             safe_apply(name)
 
     def pack(self):
         # TODO things that are `_SettingWidget`s are named carefully, need to make this
         # easier to work with.
 
-        # Architecture: radio buttons
+        # Architecture: checkboxes for multiple architectures
         self._frame_architecture = _tk.Frame(self._root)
         self._frame_architecture.pack()
-        self._architecture = LabeledOptionMenu(
+        self._architecture_label = _tk.Label(
             self._frame_architecture,
-            "Architecture",
-            _core.Architecture,
-            default=self._parent.advanced_options.architecture,
+            text="Architectures:",
         )
+        self._architecture_label.pack()
+        self._architecture_frames = []
+        self._architecture_vars = {}
+        for arch in _core.Architecture:
+            var = _tk.BooleanVar()
+            # Default: select only STANDARD if it's in the list, otherwise select all
+            if self._parent.advanced_options.architectures:
+                var.set(arch in self._parent.advanced_options.architectures)
+            else:
+                var.set(arch == _core.Architecture.STANDARD)
+            check = _tk.Checkbutton(
+                self._frame_architecture,
+                text=arch.value.capitalize(),
+                variable=var,
+            )
+            check.pack(anchor=_tk.W)
+            self._architecture_vars[arch] = var
+            self._architecture_frames.append(var)
 
         # Number of epochs: text box
         self._frame_epochs = _tk.Frame(self._root)
@@ -1195,6 +1249,10 @@ class AdvancedOptionsGUI(object):
             default=_float_or_null.inverse(self._parent.advanced_options.threshold_esr),
             type=_float_or_null.forward,
         )
+
+    def get_architectures(self):
+        """Return list of selected architectures."""
+        return [arch for arch, var in self._architecture_vars.items() if var.get()]
 
 
 class UserMetadataGUI(object):
