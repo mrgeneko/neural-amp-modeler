@@ -93,6 +93,12 @@ def _create_callbacks(learning_config):
     """
     Checkpointing, essentially
     """
+    # Print epoch progress for queue monitoring
+    class EpochProgressCallback(_pl.callbacks.Callback):
+        def on_train_epoch_end(self, trainer, pl_module):
+            current_epoch = trainer.current_epoch
+            print(f"Epoch[{current_epoch}]")
+
     # Checkpoints should be run every time the validation check is run.
     # So base it off of learning_config["trainer"]["val_check_interval"] if it's there.
     validate_inside_epoch = "val_check_interval" in learning_config["trainer"]
@@ -120,13 +126,13 @@ def _create_callbacks(learning_config):
         filename="checkpoint_epoch_{epoch:04d}", every_n_epochs=1
     )
     if not validate_inside_epoch:
-        return [checkpoint_best, checkpoint_epoch]
+        return [checkpoint_best, checkpoint_epoch, EpochProgressCallback()]
     else:
         # The last validation pass, whether at the end of an epoch or not
         checkpoint_last = _pl.callbacks.model_checkpoint.ModelCheckpoint(
             filename="checkpoint_last_{epoch:04d}_{step}", **kwargs
         )
-        return [checkpoint_best, checkpoint_last, checkpoint_epoch]
+        return [checkpoint_best, checkpoint_last, checkpoint_epoch, EpochProgressCallback()]
 
 
 def main(
