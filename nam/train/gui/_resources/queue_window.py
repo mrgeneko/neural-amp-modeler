@@ -413,7 +413,35 @@ class QueueWindow:
         create_labeled_field(dialog, "Wet:", output_var, is_file_path=True)
 
         dest_var = _tk.StringVar(value=cfg.get("default_destination", ""))
-        create_labeled_field(dialog, "Destination:", dest_var, is_directory=True)
+        create_labeled_field(dialog, "Output Directory:", dest_var, is_directory=True)
+
+        # File name template section
+        _ttk.Label(dialog, text="File Name Template:").pack(anchor=_tk.W, padx=5, pady=(5, 0))
+        template_frame = _ttk.Frame(dialog)
+        template_frame.pack(fill=_tk.X, padx=5, pady=3)
+        output_template_var = _tk.StringVar(value=cfg.get("output_template", "__ID_{guid}__{model}_{type}_{size}_{date}"))
+        _ttk.Entry(template_frame, textvariable=output_template_var, width=50).pack(
+            side=_tk.LEFT, fill=_tk.X, expand=True
+        )
+        _ttk.Label(
+            dialog,
+            text="Tokens: {input} {size} {date} {time} {creator} {type} {model} __ID_{guid}__",
+            font=("Helvetica", 8),
+        ).pack(anchor=_tk.W, padx=5)
+
+        # Batch GUID for grouping jobs
+        batch_frame = _ttk.Frame(dialog)
+        batch_frame.pack(fill=_tk.X, padx=5, pady=3)
+        _ttk.Label(batch_frame, text="Batch GUID:", width=15, anchor=_tk.W).pack(side=_tk.LEFT)
+        batch_guid_var = _tk.StringVar(value=_uuid.uuid4().hex[:8])
+        _ttk.Entry(batch_frame, textvariable=batch_guid_var, width=20).pack(
+            side=_tk.LEFT, fill=_tk.X, expand=True
+        )
+        _ttk.Button(
+            batch_frame,
+            text="Generate",
+            command=lambda: batch_guid_var.set(_uuid.uuid4().hex[:8]),
+        ).pack(side=_tk.RIGHT, padx=2)
 
         # Architecture section
         _ttk.Separator(dialog, orient=_tk.HORIZONTAL).pack(fill=_tk.X, padx=5, pady=10)
@@ -509,39 +537,6 @@ class QueueWindow:
         _ttk.Entry(level_frame, textvariable=output_level_var, width=15).pack(
             side=_tk.LEFT, padx=5
         )
-
-        # Output template section
-        _ttk.Separator(dialog, orient=_tk.HORIZONTAL).pack(fill=_tk.X, padx=5, pady=10)
-        _ttk.Label(dialog, text="Output Filename Template:").pack(
-            anchor=_tk.W, padx=5, pady=3
-        )
-        template_frame = _ttk.Frame(dialog)
-        template_frame.pack(fill=_tk.X, padx=5, pady=3)
-        output_template_var = _tk.StringVar(value=cfg.get("output_template", "__ID_{guid}__{model}_{type}_{size}_{date}"))
-        _ttk.Entry(template_frame, textvariable=output_template_var, width=50).pack(
-            side=_tk.LEFT, fill=_tk.X, expand=True
-        )
-        _ttk.Label(
-            dialog,
-            text="Tokens: {input} {size} {date} {time} {creator} {type} {model} __ID_{guid}__",
-            font=("Helvetica", 8),
-        ).pack(anchor=_tk.W, padx=5)
-
-        # Batch GUID for grouping jobs
-        batch_frame = _ttk.Frame(dialog)
-        batch_frame.pack(fill=_tk.X, padx=5, pady=3)
-        _ttk.Label(batch_frame, text="Batch GUID:", width=20, anchor=_tk.W).pack(
-            side=_tk.LEFT
-        )
-        batch_guid_var = _tk.StringVar(value=_uuid.uuid4().hex[:8])
-        _ttk.Entry(batch_frame, textvariable=batch_guid_var, width=30).pack(
-            side=_tk.LEFT, fill=_tk.X, expand=True
-        )
-        _ttk.Button(
-            batch_frame,
-            text="Generate",
-            command=lambda: batch_guid_var.set(_uuid.uuid4().hex[:8]),
-        ).pack(side=_tk.RIGHT, padx=2)
 
         def on_add():
             # Save settings to config
